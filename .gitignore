@@ -1,0 +1,7 @@
+*.exe 
+*.pdb 
+*.ilk 
+*.suo 
+*.obj 
+.parasoft.dat\ 
+*~ 
