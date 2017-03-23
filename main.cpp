@@ -10,8 +10,8 @@
 //Constants
 enum GlobalConstants{
     //Application Constants
-    SCREEN_WIDTH    = 320,
-    SCREEN_HEIGHT   = 240,
+    SCREEN_WIDTH    = 640,
+    SCREEN_HEIGHT   = 480,
 
     //Main Grid Dimensions
     GRID_WIDTH  = SCREEN_WIDTH/3,
@@ -30,8 +30,11 @@ enum GlobalConstants{
     PREVIEW_Y       = 0,
 
     //Cell Dimensions
-    CELL_WIDTH  = (GRID_WIDTH - GRID_COLS - 1)/GRID_COLS,
-    CELL_HEIGHT = (GRID_HEIGHT - GRID_ROWS - 1)/GRID_ROWS,
+    SCREEN_ROWS       = 20,
+    SCREEN_COLS       = 30,
+    CELL_PADDING = 1,
+    CELL_WIDTH  = (SCREEN_WIDTH - SCREEN_COLS*CELL_PADDING)/SCREEN_COLS,
+    CELL_HEIGHT = (SCREEN_HEIGHT - SCREEN_ROWS*CELL_PADDING)/SCREEN_ROWS,
 
     //Game Constants
     FALL_TICKS  = 10000
@@ -39,7 +42,7 @@ enum GlobalConstants{
 
 bool init();
 void close();
-void DrawRect(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, unsigned char Red, unsigned char Green, unsigned char Blue, unsigned char Alpha);
+void DrawRect(int X, int Y, int Width, int Height, unsigned char Red, unsigned char Green, unsigned char Blue, unsigned char Alpha);
 
 SDL_Window* gWindow = NULL;
 SDL_Renderer* gRenderer = NULL;
@@ -103,9 +106,9 @@ Tetromino       RotateTetroAntiClockwise(Tetromino Tetro);
 unsigned int    CheckCollisions(BlockGrid Grid, Tetromino Tetro);
 unsigned int    RemoveGridLines(BlockGrid Grid);
 
-void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, BlockGrid Grid, Tetromino Tetro);
-void DrawPreviewCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, Tetromino Tetro);
-void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height);
+void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, BlockGrid Grid, Tetromino Tetro, float CellWidth, float CellHeight);
+void DrawPreviewCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, Tetromino Tetro, float CellWidth, float CellHeight);
+void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, float CellWidth, float CellHeight);
 
 int main( int argc, char* args[] )
 {
@@ -133,6 +136,9 @@ int main( int argc, char* args[] )
         unsigned int MoveDown = 0;
         unsigned int Rotate = 0;
         unsigned int Score = 0;
+
+        float CellWidth = (float)(SCREEN_WIDTH - SCREEN_COLS*CELL_PADDING)/SCREEN_COLS;
+        float CellHeight = (float)(SCREEN_HEIGHT - SCREEN_ROWS*CELL_PADDING)/SCREEN_ROWS;
 
         //While application is running
         while( !quit )
@@ -272,8 +278,14 @@ int main( int argc, char* args[] )
             SDL_SetRenderDrawColor( gRenderer, 0, 0, 0, 0 );
             SDL_RenderClear( gRenderer );
 
-            DrawMainCanvas(GRID_X, GRID_Y, GRID_WIDTH, GRID_HEIGHT, MainGrid, FallingTetro);
-            DrawPreviewCanvas(PREVIEW_X, PREVIEW_Y, PREVIEW_WIDTH, PREVIEW_HEIGHT, NextTetro);
+            DrawMainCanvas(GRID_X, GRID_Y, GRID_WIDTH, GRID_HEIGHT, MainGrid, FallingTetro, CellWidth, CellHeight);
+
+            //Draw Tetromino
+            DrawTetromino(FallingTetro, GRID_X, GRID_Y, CellWidth, CellHeight);
+
+            DrawPreviewCanvas(PREVIEW_X, PREVIEW_Y, PREVIEW_WIDTH, PREVIEW_HEIGHT, NextTetro, CellWidth, CellHeight);
+            //Draw Preview Tetromino
+            DrawTetromino(NextTetro, PREVIEW_X, PREVIEW_Y, CellWidth, CellHeight);
 
             //Update screen
             SDL_RenderPresent( gRenderer );
@@ -347,7 +359,7 @@ void close()
 	SDL_Quit();
 }
 
-void DrawRect(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, unsigned char Red, unsigned char Green, unsigned char Blue, unsigned char Alpha)
+void DrawRect(int X, int Y, int Width, int Height, unsigned char Red, unsigned char Green, unsigned char Blue, unsigned char Alpha)
 {
     SDL_SetRenderDrawColor( gRenderer, Red, Green, Blue, Alpha);
     SDL_Rect Rect = {X, Y, Width, Height};
@@ -355,7 +367,7 @@ void DrawRect(unsigned int X, unsigned int Y, unsigned int Width, unsigned int H
     SDL_RenderFillRect( gRenderer, &Rect );
 }
 
-void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height)
+void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, float CellWidth, float CellHeight)
 {
     for(unsigned int TRow = 0; TRow < 4; ++TRow)
     {
@@ -368,10 +380,10 @@ void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, unsigned int
                 unsigned int Col = Tetro.X + TCol;
                 unsigned int Row = Tetro.Y + TRow;
 
-                DrawRect(X + (Col*(Width - Grid.Cols - 1)/Grid.Cols + Col + 1),
-                         Y + (Row*(Height - Grid.Rows - 1)/Grid.Rows+ Row + 1),
-                         CELL_WIDTH,
-                         CELL_HEIGHT, 
+                DrawRect(X + float(Col)*CellWidth + CELL_PADDING,
+                         Y + float(Row)*CellHeight + CELL_PADDING,
+                         CellWidth,
+                         CellHeight, 
                          CurrentBlock->Red,
                          CurrentBlock->Green,
                          CurrentBlock->Blue,
@@ -381,7 +393,7 @@ void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, unsigned int
     }
 }
 
-void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, BlockGrid Grid, Tetromino Tetro)
+void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, BlockGrid Grid, Tetromino Tetro, float CellWidth, float CellHeight)
 {
     // Draw Grid Background
     DrawRect(X, Y, Width, Height, 0x55, 0x55, 0x55, 0xFF);
@@ -396,8 +408,8 @@ void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned
             if(CurrentBlock->Occupied)
             {
                 // Draw grid blocks
-                DrawRect(X + (Col*(Width - Grid.Cols - 1)/Grid.Cols + Col + 1),
-                         Y + (Row*(Height - Grid.Rows - 1)/Grid.Rows+ Row + 1),
+                DrawRect(X + Col*CELL_WIDTH,
+                         Y + Row*CELL_HEIGHT,
                          CELL_WIDTH,
                          CELL_HEIGHT,
                          CurrentBlock->Red,
@@ -407,28 +419,19 @@ void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned
             }
         }
     }
-
-    //Draw Tetromino
-    DrawTetromino(Tetro, X, Y, Width, Height);
 }
 
-void DrawPreviewCanvas(unsigned int X, unsigned int Y, Width, unsigned int Height, Tetromino Tetro)
+void DrawPreviewCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, Tetromino Tetro, float CellWidth, float CellHeight)
 {
     // Draw Preview Background
-    unsigned int OffsetX = (Width - 4*CELL_WIDTH)/2;
-    unsigned int OffsetY = (Height - 4*CELL_HEIGHT)/2;
-
-    DrawRect(X + OffsetX,
-             Y + OffsetY,
+    DrawRect(X,
+             Y,
              4*CELL_WIDTH,
              4*CELL_HEIGHT,
-             0x55,
-             0x55,
-             0x55,
+             0x77,
+             0x77,
+             0x77,
              0xFF);
-
-    //Draw Preview Tetromino
-    DrawTetromino(Tetro, X, Y, Width, Height);
 }
 
 /*
