@@ -1,4 +1,4 @@
-#include <SDL.h>
+#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -12,6 +12,7 @@ enum GlobalConstants{
     //Application Constants
     SCREEN_WIDTH    = 640,
     SCREEN_HEIGHT   = 480,
+    FRAMERATE = 30, //Hz
 
     //Main Grid Dimensions
     GRID_WIDTH  = SCREEN_WIDTH/3,
@@ -32,12 +33,12 @@ enum GlobalConstants{
     //Cell Dimensions
     SCREEN_ROWS       = 20,
     SCREEN_COLS       = 30,
-    CELL_PADDING = 1,
+    CELL_PADDING = 0,
     CELL_WIDTH  = (SCREEN_WIDTH - SCREEN_COLS*CELL_PADDING)/SCREEN_COLS,
     CELL_HEIGHT = (SCREEN_HEIGHT - SCREEN_ROWS*CELL_PADDING)/SCREEN_ROWS,
 
     //Game Constants
-    FALL_TICKS  = 10000
+    FALL_FRAMES = 30
 };
 
 bool init();
@@ -72,21 +73,14 @@ struct Block{
 struct BlockGrid{
     unsigned int Rows;
     unsigned int Cols;
-    unsigned int X;
-    unsigned int Y;
     Block* Blocks;
-};
-
-struct Entity{
-    unsigned int X;
-    unsigned int Y;
 };
 
 struct Tetromino{
     TetrominoType Type;
     unsigned int GridSize;
-    unsigned int X;
-    unsigned int Y;
+    int Row;
+    int Col;
     BlockGrid Grid;
 };
 
@@ -94,7 +88,7 @@ Block   GenerateBlock();
 Block*  GetBlock(BlockGrid Grid, unsigned int Row, unsigned int Col);
 void    EraseBlock(Block* BlockToErase);
 
-BlockGrid   GenerateGrid(unsigned int X, unsigned int Y, unsigned int Rows, unsigned int Cols);
+BlockGrid   GenerateGrid(unsigned int Rows, unsigned int Cols);
 void        DestroyGrid(BlockGrid Grid);
 
 Tetromino       GenerateTetromino();
@@ -106,9 +100,7 @@ Tetromino       RotateTetroAntiClockwise(Tetromino Tetro);
 unsigned int    CheckCollisions(BlockGrid Grid, Tetromino Tetro);
 unsigned int    RemoveGridLines(BlockGrid Grid);
 
-void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, BlockGrid Grid, Tetromino Tetro, float CellWidth, float CellHeight);
-void DrawPreviewCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, Tetromino Tetro, float CellWidth, float CellHeight);
-void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, float CellWidth, float CellHeight);
+void DrawGrid(BlockGrid Grid, unsigned int X, unsigned int Y, unsigned Width, unsigned Height);
 
 int main( int argc, char* args[] )
 {
@@ -125,17 +117,24 @@ int main( int argc, char* args[] )
         //Event handler
         SDL_Event e;
 
-        BlockGrid MainGrid      = GenerateGrid(GRID_X, GRID_Y, GRID_ROWS, GRID_COLS);
+        BlockGrid MainGrid      = GenerateGrid(GRID_ROWS, GRID_COLS);
 
         Tetromino FallingTetro = GenerateTetromino();
         Tetromino NextTetro = GenerateTetromino();
+        NextTetro.Col = 1;
+        NextTetro.Row = 1;
 
-        unsigned int FallingTimer = FALL_TICKS;
+        unsigned int StartTick = 0;
+        unsigned int EndTick = 0;
+        unsigned int FrameDuration = 0;
+
+        unsigned int FallingTimer = FALL_FRAMES;
         unsigned int MoveLeft = 0;
         unsigned int MoveRight = 0;
         unsigned int MoveDown = 0;
         unsigned int Rotate = 0;
         unsigned int Score = 0;
+        unsigned int Redraw = 1;
 
         float CellWidth = (float)(SCREEN_WIDTH - SCREEN_COLS*CELL_PADDING)/SCREEN_COLS;
         float CellHeight = (float)(SCREEN_HEIGHT - SCREEN_ROWS*CELL_PADDING)/SCREEN_ROWS;
@@ -143,6 +142,7 @@ int main( int argc, char* args[] )
         //While application is running
         while( !quit )
         {
+            StartTick = SDL_GetTicks();
             /*
              * Input Stuff
              */
@@ -185,7 +185,7 @@ int main( int argc, char* args[] )
             if(FallingTimer == 0)
             {
                 MoveDown = 1;
-                FallingTimer = FALL_TICKS;
+                FallingTimer = FALL_FRAMES;
             }
             else
             {
@@ -198,11 +198,12 @@ int main( int argc, char* args[] )
                 //Duplicate Tetromino
                 Tetromino NewTetro = FallingTetro;
 
-                NewTetro.X--;
+                NewTetro.Col--;
 
                 if(!CheckCollisions(MainGrid, NewTetro))
                 {
                     FallingTetro = NewTetro;
+                    Redraw = 1;
                 }
 
                 MoveLeft = 0;
@@ -213,11 +214,12 @@ int main( int argc, char* args[] )
                 //Duplicate Tetromino
                 Tetromino NewTetro = FallingTetro;
 
-                NewTetro.X++;
+                NewTetro.Col++;
 
                 if(!CheckCollisions(MainGrid, NewTetro))
                 {
                     FallingTetro = NewTetro;
+                    Redraw = 1;
                 }
 
                 MoveRight = 0;
@@ -228,77 +230,131 @@ int main( int argc, char* args[] )
                 //Duplicate Tetromino
                 Tetromino NewTetro = FallingTetro;
 
-                NewTetro.Y++;
+                NewTetro.Row++;
                 //Check for collisions
                 if(CheckCollisions(MainGrid, NewTetro))
                 {
                     StoreTetromino(MainGrid, FallingTetro);
                     DestroyTetromino(FallingTetro);
                     FallingTetro = NextTetro;
+
                     NextTetro    = GenerateTetromino();
-                    FallingTimer = FALL_TICKS;
+                    NextTetro.Col = 1;
+                    NextTetro.Row = 1;
+
+
+                    FallingTimer = FALL_FRAMES;
                 }
                 else
                 {
                     FallingTetro = NewTetro;
                 }
 
+                Redraw = 1;
                 MoveDown = 0;
             }
 
             if(Rotate)
             {
-                //Duplicate Tetromino
-                Tetromino NewTetro = RotateTetroClockwise(FallingTetro);
-
-                if(!CheckCollisions(MainGrid, NewTetro))
+                if(FallingTetro.Type != O_SHAPE)
                 {
-                    FallingTetro = NewTetro;
-                }
+                    //Duplicate Tetromino
+                    Tetromino NewTetro = RotateTetroClockwise(FallingTetro);
 
+                    if(!CheckCollisions(MainGrid, NewTetro))
+                    {
+                        DestroyTetromino(FallingTetro);
+                        FallingTetro = NewTetro;
+                        Redraw = 1;
+                    }
+                    else
+                    {
+                        DestroyTetromino(NewTetro);
+                    }
+
+                }
                 Rotate = 0;
             }
 
             // Final check for collisons - quit game if any are found
             if(CheckCollisions(MainGrid, FallingTetro))
             {
-                //quit = true;
+                quit = true;
             }
 
             //Remove any lines in the grid
             Score += RemoveGridLines(MainGrid);
-
-            printf("Score: %d\n", Score);
 
             /*
              * Drawing Stuff
              */
 
             //Clear screen
-            SDL_SetRenderDrawColor( gRenderer, 0, 0, 0, 0 );
-            SDL_RenderClear( gRenderer );
+            if(Redraw)
+            {
+                SDL_SetRenderDrawColor( gRenderer, 0, 0, 0, 0 );
+                SDL_RenderClear( gRenderer );
 
-            DrawMainCanvas(GRID_X, GRID_Y, GRID_WIDTH, GRID_HEIGHT, MainGrid, FallingTetro, CellWidth, CellHeight);
+                float BlockWidth = (float)GRID_WIDTH/(float)MainGrid.Cols;
+                float BlockHeight = (float)GRID_HEIGHT/(float)MainGrid.Rows;
 
-            //Draw Tetromino
-            DrawTetromino(FallingTetro, GRID_X, GRID_Y, CellWidth, CellHeight);
+                // Draw Grid Background
+                DrawRect(GRID_X, GRID_Y, GRID_WIDTH, GRID_HEIGHT, 0x55, 0x55, 0x55, 0xFF);
 
-            DrawPreviewCanvas(PREVIEW_X, PREVIEW_Y, PREVIEW_WIDTH, PREVIEW_HEIGHT, NextTetro, CellWidth, CellHeight);
-            //Draw Preview Tetromino
-            DrawTetromino(NextTetro, PREVIEW_X, PREVIEW_Y, CellWidth, CellHeight);
+                //Draw Grid
+                DrawGrid(MainGrid, GRID_X, GRID_Y, GRID_WIDTH, GRID_HEIGHT);
 
-            //Update screen
-            SDL_RenderPresent( gRenderer );
+                //Draw Tetromino
+                DrawGrid(FallingTetro.Grid,
+                         GRID_X+FallingTetro.Col*BlockWidth,
+                         GRID_Y+FallingTetro.Row*BlockHeight,
+                         FallingTetro.GridSize*BlockWidth,
+                         FallingTetro.GridSize*BlockHeight);
+
+                //Draw Preview Grid Background
+
+                unsigned int PreviewWidth = 6.0*BlockWidth;
+                unsigned int PreviewHeight = 6.0*BlockHeight;
+
+                unsigned int TetroWidth = (NextTetro.GridSize*BlockWidth);
+                unsigned int TetroHeight = (NextTetro.GridSize*BlockHeight);
+
+                DrawRect(PREVIEW_X,
+                         PREVIEW_Y,
+                         PreviewWidth,
+                         PreviewHeight,
+                         0x77,
+                         0x77,
+                         0x77,
+                         0xFF);
+
+                //Draw Next Tetrimino
+                DrawGrid(NextTetro.Grid,
+                         PREVIEW_X + ((PreviewWidth-TetroWidth)/2),
+                         PREVIEW_Y + ((PreviewHeight-TetroHeight)/2),
+                         TetroWidth,
+                         TetroHeight);
+
+                //Update screen
+                SDL_RenderPresent( gRenderer );
+                Redraw = 0;
+            }
+
+            //Delay till the end of the maximum frame duration (1/FRAMERATE seconds)
+            EndTick = SDL_GetTicks();
+            FrameDuration = EndTick - StartTick;
+
+            SDL_Delay((1000/FRAMERATE)-FrameDuration);
         }
 
         DestroyTetromino(FallingTetro);
         DestroyGrid(MainGrid);
-	}
+    }
 
-	//Free resources and close SDL
-	close();
+    //Free resources and close SDL
+    close();
 
-	return 0;
+    return 0;
 }
 
 /*
@@ -367,38 +423,11 @@ void DrawRect(int X, int Y, int Width, int Height, unsigned char Red, unsigned c
     SDL_RenderFillRect( gRenderer, &Rect );
 }
 
-void DrawTetromino(Tetromino Tetro, unsigned int X, unsigned int Y, float CellWidth, float CellHeight)
+void DrawGrid(BlockGrid Grid, unsigned int X, unsigned int Y, unsigned Width, unsigned Height)
 {
-    for(unsigned int TRow = 0; TRow < 4; ++TRow)
-    {
-        for(unsigned int TCol = 0; TCol < 4; ++TCol)
-        {
-            Block* CurrentBlock = GetBlock(Tetro.Grid,TRow,TCol);
+    float BlockWidth = (float)Width/(float)Grid.Cols;
+    float BlockHeight = (float)Height/(float)Grid.Rows;
 
-            if(CurrentBlock->Occupied)
-            {
-                unsigned int Col = Tetro.X + TCol;
-                unsigned int Row = Tetro.Y + TRow;
-
-                DrawRect(X + float(Col)*CellWidth + CELL_PADDING,
-                         Y + float(Row)*CellHeight + CELL_PADDING,
-                         CellWidth,
-                         CellHeight, 
-                         CurrentBlock->Red,
-                         CurrentBlock->Green,
-                         CurrentBlock->Blue,
-                         CurrentBlock->Alpha );
-            }
-        }
-    }
-}
-
-void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, BlockGrid Grid, Tetromino Tetro, float CellWidth, float CellHeight)
-{
-    // Draw Grid Background
-    DrawRect(X, Y, Width, Height, 0x55, 0x55, 0x55, 0xFF);
-
-    //Draw Grid
     for(unsigned int Row = 0; Row < Grid.Rows; ++Row)
     {
         for(unsigned int Col = 0; Col < Grid.Cols; ++Col)
@@ -407,11 +436,23 @@ void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned
 
             if(CurrentBlock->Occupied)
             {
-                // Draw grid blocks
-                DrawRect(X + Col*CELL_WIDTH,
-                         Y + Row*CELL_HEIGHT,
-                         CELL_WIDTH,
-                         CELL_HEIGHT,
+                unsigned int GapFillerHori = 0;
+                unsigned int GapFillerVert = 0;
+
+                if((unsigned int)(BlockWidth*(Col+1)) > ((unsigned int)(BlockWidth)*(Col+1)))
+                {
+                    GapFillerHori = 1;
+                }
+
+                if((unsigned int)(BlockHeight*(Row+1)) > ((unsigned int)(BlockHeight)*(Row+1)))
+                {
+                    GapFillerVert = 1;
+                }
+
+                DrawRect(X + Col*BlockWidth,
+                         Y + Row*BlockHeight,
+                         BlockWidth + GapFillerHori,
+                         BlockHeight + GapFillerVert,
                          CurrentBlock->Red,
                          CurrentBlock->Green,
                          CurrentBlock->Blue,
@@ -419,19 +460,6 @@ void DrawMainCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned
             }
         }
     }
-}
-
-void DrawPreviewCanvas(unsigned int X, unsigned int Y, unsigned int Width, unsigned int Height, Tetromino Tetro, float CellWidth, float CellHeight)
-{
-    // Draw Preview Background
-    DrawRect(X,
-             Y,
-             4*CELL_WIDTH,
-             4*CELL_HEIGHT,
-             0x77,
-             0x77,
-             0x77,
-             0xFF);
 }
 
 /*
@@ -463,12 +491,10 @@ void EraseBlock(Block* BlockToErase)
     BlockToErase->Alpha = 0;
 }
 
-BlockGrid GenerateGrid(unsigned int X, unsigned int Y, unsigned int Rows, unsigned int Cols)
+BlockGrid GenerateGrid(unsigned int Rows, unsigned int Cols)
 {
     BlockGrid Result;
 
-    Result.X = X;
-    Result.Y = Y;
     Result.Rows = Rows;
     Result.Cols = Cols;
 
@@ -504,8 +530,8 @@ void StoreTetromino(BlockGrid Grid, Tetromino Tetro)
 
             if(CurrentBlock->Occupied)
             {
-                unsigned int GridCol = Tetro.X + Col;
-                unsigned int GridRow = Tetro.Y + Row;
+                unsigned int GridCol = Tetro.Col + Col;
+                unsigned int GridRow = Tetro.Row + Row;
 
                 Block* GridBlock = GetBlock(Grid, GridRow, GridCol);
 
@@ -519,9 +545,10 @@ void StoreTetromino(BlockGrid Grid, Tetromino Tetro)
 
 unsigned int CheckCollisions(BlockGrid Grid, Tetromino Tetro)
 {
+    //Check for null pointers
     if( (Tetro.Grid.Blocks == NULL) || (Grid.Blocks == NULL) )
     {
-        return 0;
+        return 1;
     }
 
     for(unsigned int Row = 0; Row < Tetro.Grid.Rows; ++Row)
@@ -532,11 +559,11 @@ unsigned int CheckCollisions(BlockGrid Grid, Tetromino Tetro)
 
             if(CurrentBlock->Occupied)
             {
-                unsigned int GridCol = Tetro.X + Col;
-                unsigned int GridRow = Tetro.Y + Row;
+                unsigned int GridCol = Tetro.Col + Col;
+                unsigned int GridRow = Tetro.Row + Row;
 
                 //If out of bounds, count as collision
-                if( (GridCol >= Grid.Cols) || (GridRow >= Grid.Rows) )
+                if( (GridCol < 0) || (GridRow < 0) || (GridCol >= Grid.Cols) || (GridRow >= Grid.Rows) )
                 {
                     return 1;
                 }
@@ -562,9 +589,8 @@ Tetromino GenerateTetromino()
 {
     Tetromino Result;
 
-    Result.X = 0;
-    Result.Y = 0;
-    Result.Grid = GenerateGrid(0,0,4,4);
+    Result.Col = 0;
+    Result.Row = 0;
 
     unsigned int Red   = rand()%0xFF;
     unsigned int Green = rand()%0xFF;
@@ -585,10 +611,10 @@ Tetromino GenerateTetromino()
     {
         case I_SHAPE:
             Result.GridSize = 4;
-            Coords[0] = 0;
-            Coords[1] = 4;
-            Coords[2] = 8;
-            Coords[3] = 12;
+            Coords[0] = 1;
+            Coords[1] = 5;
+            Coords[2] = 9;
+            Coords[3] = 13;
             break;
         case T_SHAPE:
             Result.GridSize = 3;
@@ -641,9 +667,11 @@ Tetromino GenerateTetromino()
             break;
     }
 
+    Result.Grid = GenerateGrid(Result.GridSize,Result.GridSize);
+
     for(unsigned int Index = 0; Index < 4; ++Index)
     {
-        Block* TBlock = Result.Grid.Blocks + Coords[Index];
+        Block* TBlock = GetBlock(Result.Grid, Coords[Index]/4, Coords[Index]%4);
 
         TBlock->Occupied = 1;
         TBlock->Red   = Red;
@@ -669,11 +697,11 @@ Tetromino RotateTetroClockwise(Tetromino Tetro)
         return Result;
     }
 
-    BlockGrid TransposeGrid = GenerateGrid(0,0,4,4);
+    BlockGrid TransposeGrid = GenerateGrid(Result.GridSize,Result.GridSize);
 
-    for(unsigned int Row = 0; Row < 4; ++Row)
+    for(unsigned int Row = 0; Row < Result.GridSize; ++Row)
     {
-        for(unsigned int Col = 0; Col < 4; ++Col)
+        for(unsigned int Col = 0; Col < Result.GridSize; ++Col)
         {
             Block* Block1 = GetBlock(Result.Grid,   Row, Col);
             Block* Block2 = GetBlock(TransposeGrid, Col, Row);
@@ -682,11 +710,10 @@ Tetromino RotateTetroClockwise(Tetromino Tetro)
         }
     }
 
-    DestroyGrid(Result.Grid);
     Result.Grid = TransposeGrid;
 
     // Swap Cols
-    BlockGrid SwappedGrid = GenerateGrid(0,0,4,4);
+    BlockGrid SwappedGrid = GenerateGrid(Result.GridSize,Result.GridSize);
 
     Block* EndBlock = NULL;
     Block* StartBlock = NULL;
@@ -710,55 +737,6 @@ Tetromino RotateTetroClockwise(Tetromino Tetro)
     return Result;
 }
 
-Tetromino RotateTetroAntiClockwise(Tetromino Tetro)
-{
-    Tetromino Result = Tetro;
-
-    if(Result.Type == O_SHAPE)
-    {
-        return Result;
-    }
-
-    BlockGrid TransposeGrid = GenerateGrid(0,0,4,4);
-
-    for(unsigned int Row = 0; Row < 4; ++Row)
-    {
-        for(unsigned int Col = 0; Col < 4; ++Col)
-        {
-            Block* Block1 = GetBlock(Result.Grid,    Row, Col);
-            Block* Block2 = GetBlock(TransposeGrid, Col, Row);
-
-            *Block2 = *Block1;
-        }
-    }
-
-    DestroyGrid(Result.Grid);
-    Result.Grid = TransposeGrid;
-
-    // Swap Rows
-    BlockGrid SwappedGrid = GenerateGrid(0,0,4,4);
-
-    Block* EndBlock = NULL;
-    Block* StartBlock = NULL;
-
-    for(unsigned int Row = 0; Row < Result.GridSize; ++Row)
-    {
-        for(unsigned int Col = 0; Col < Result.GridSize; ++Col)
-        {
-            unsigned int SwapRow = (Result.GridSize - 1) - Row;
-
-            EndBlock    = GetBlock(Result.Grid,         Row,        Col);
-            StartBlock  = GetBlock(SwappedGrid,    SwapRow,    Col);
-
-            *StartBlock = *EndBlock;
-        }
-    }
-
-    DestroyGrid(Result.Grid);
-    Result.Grid = SwappedGrid;
-
-    return Result;
-}
 unsigned int RemoveGridLines(BlockGrid Grid)
 {
     unsigned int FullRowCount    = 0;
