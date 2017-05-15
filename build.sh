@@ -1,14 +1,14 @@
 #!/bin/bash
 objects=main.cpp
 
-compiler=gcc
+compiler=g++
 
 libPath=/usr/lib
 incPath=/usr/include
 
 objectName=agafb
 
-compilerFlags="-w -o $objectName"
-linkerFlags=-lSDL2
+compilerFlags="-Wall -Wextra -w -o $objectName"
+linkerFlags="-lSDL2 -lSDL2_ttf"
 
 $compiler $objects $compilerFlags $linkerFlags
